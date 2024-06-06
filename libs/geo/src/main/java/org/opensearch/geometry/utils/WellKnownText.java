@@ -307,7 +307,7 @@ public class WellKnownText {
         }
         List<Geometry> shapes = new ArrayList<>();
         shapes.add(parseGeometry(stream));
-        while (nextCloserOrComma(stream).equals(COMMA)) {
+        for (String token = nextCloserOrComma(stream); token.equals(COMMA); token = nextCloserOrComma(stream)) {
             shapes.add(parseGeometry(stream));
         }
         return new GeometryCollection<>(shapes);
