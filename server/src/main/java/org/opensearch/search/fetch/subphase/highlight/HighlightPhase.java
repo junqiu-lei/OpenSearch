@@ -45,10 +45,12 @@ import org.opensearch.search.fetch.FetchSubPhase;
 import org.opensearch.search.fetch.FetchSubPhaseProcessor;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
@@ -92,15 +94,34 @@ public class HighlightPhase implements FetchSubPhase {
             @Override
             public void process(HitContext hitContext) throws IOException {
                 Map<String, HighlightField> highlightFields = new HashMap<>();
+                // Group contexts by highlighter
+                Map<Highlighter, List<FieldHighlightContext>> groupedContexts = new HashMap<>();
                 for (String field : contextBuilders.keySet()) {
                     FieldHighlightContext fieldContext = contextBuilders.get(field).apply(hitContext);
                     Highlighter highlighter = getHighlighter(fieldContext.field);
-                    HighlightField highlightField = highlighter.highlight(fieldContext);
-                    if (highlightField != null) {
-                        // Note that we make sure to use the original field name in the response. This is because the
-                        // original field could be an alias, and highlighter implementations may instead reference the
-                        // concrete field it points to.
-                        highlightFields.put(field, new HighlightField(field, highlightField.fragments()));
+                    groupedContexts.computeIfAbsent(highlighter, k -> new ArrayList<>()).add(fieldContext);
+                }
+
+                for (Map.Entry<Highlighter, List<FieldHighlightContext>> entry : groupedContexts.entrySet()) {
+                    Highlighter highlighter = entry.getKey();
+                    List<FieldHighlightContext> contexts = entry.getValue();
+                    if (highlighter instanceof BatchHighlighter && ((BatchHighlighter) highlighter).supportsBatchHighlighting()) {
+                        // Batch processing logic
+                        BatchHighlighter batchHighlighter = (BatchHighlighter) highlighter;
+                        Map<FieldHighlightContext, HighlightField> batchResults = batchHighlighter.batchHighlight(contexts);
+                        for (Map.Entry<FieldHighlightContext, HighlightField> resultEntry : batchResults.entrySet()) {
+                            String fieldName = resultEntry.getKey().fieldName;
+                            HighlightField highlightField = resultEntry.getValue();
+                            highlightFields.put(fieldName, new HighlightField(fieldName, highlightField.fragments()));
+                        }
+                    } else {
+                        // Fallback to individual highlighting
+                        for (FieldHighlightContext context : contexts) {
+                            HighlightField highlightField = highlighter.highlight(context);
+                            if (highlightField != null) {
+                                highlightFields.put(context.fieldName, new HighlightField(context.fieldName, highlightField.fragments()));
+                            }
+                        }
                     }
                 }
                 hitContext.hit().highlightFields(highlightFields);

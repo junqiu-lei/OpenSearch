@@ -26,21 +26,18 @@ public interface BatchHighlighter extends Highlighter {
     
     Logger logger = LogManager.getLogger(BatchHighlighter.class);
     
-    // Static initialization block to verify custom core is loaded
-    static {
-        logger.info("\n\n========================================");
-        logger.info("BATCH HIGHLIGHTER INTERFACE LOADED!");
-        logger.info("Custom OpenSearch Core is being used");
-        logger.info("========================================\n\n");
-    }
-    
     /**
      * Indicates whether this highlighter supports batch highlighting.
      * 
      * @return true if batch highlighting is supported
      */
     default boolean supportsBatchHighlighting() {
-        logger.debug("supportsBatchHighlighting() called, returning false by default");
+        System.out.println("\n\n========================================");
+        System.out.println("BATCH HIGHLIGHTER INTERFACE VERIFICATION");
+        System.out.println("supportsBatchHighlighting() called");
+        System.out.println("Custom OpenSearch Core is ACTIVE!");
+        System.out.println("========================================\n");
+        logger.info("BatchHighlighter.supportsBatchHighlighting() called - Custom Core Active");
         return false;
     }
     
@@ -53,7 +50,9 @@ public interface BatchHighlighter extends Highlighter {
      * @throws IOException if an error occurs during highlighting
      */
     default Map<FieldHighlightContext, HighlightField> batchHighlight(List<FieldHighlightContext> contexts) throws IOException {
-        logger.info("BatchHighlighter.batchHighlight() called with {} contexts", contexts.size());
+        logger.info("\n=== BATCH HIGHLIGHTER: batchHighlight() called ===");
+        logger.info("=== Processing {} contexts in batch mode ===", contexts.size());
+        logger.info("=== This confirms custom OpenSearch Core is running! ===");
         // Default implementation falls back to individual highlighting
         Map<FieldHighlightContext, HighlightField> results = new HashMap<>();
         for (FieldHighlightContext context : contexts) {
