@@ -9,6 +9,8 @@
 package org.opensearch.search.fetch.subphase.highlight;
 
 import org.opensearch.core.common.io.stream.Writeable;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
 import java.util.HashMap;
@@ -22,12 +24,23 @@ import java.util.Map;
  */
 public interface BatchHighlighter extends Highlighter {
     
+    Logger logger = LogManager.getLogger(BatchHighlighter.class);
+    
+    // Static initialization block to verify custom core is loaded
+    static {
+        logger.info("\n\n========================================");
+        logger.info("BATCH HIGHLIGHTER INTERFACE LOADED!");
+        logger.info("Custom OpenSearch Core is being used");
+        logger.info("========================================\n\n");
+    }
+    
     /**
      * Indicates whether this highlighter supports batch highlighting.
      * 
      * @return true if batch highlighting is supported
      */
     default boolean supportsBatchHighlighting() {
+        logger.debug("supportsBatchHighlighting() called, returning false by default");
         return false;
     }
     
@@ -40,6 +53,7 @@ public interface BatchHighlighter extends Highlighter {
      * @throws IOException if an error occurs during highlighting
      */
     default Map<FieldHighlightContext, HighlightField> batchHighlight(List<FieldHighlightContext> contexts) throws IOException {
+        logger.info("BatchHighlighter.batchHighlight() called with {} contexts", contexts.size());
         // Default implementation falls back to individual highlighting
         Map<FieldHighlightContext, HighlightField> results = new HashMap<>();
         for (FieldHighlightContext context : contexts) {
