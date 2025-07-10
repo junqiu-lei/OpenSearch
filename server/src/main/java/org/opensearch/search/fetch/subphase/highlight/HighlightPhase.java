@@ -147,6 +147,7 @@ public class HighlightPhase implements FetchSubPhase {
         if (highlighterType == null) {
             highlighterType = "unified";
         }
+        logger.info("Getting highlighter for type: {}, available highlighters: {}", highlighterType, highlighters.keySet());
         Highlighter highlighter = highlighters.get(highlighterType);
         if (highlighter == null) {
             throw new IllegalArgumentException("unknown highlighter type [" + highlighterType + "] for the field [" + field.field() + "]");
@@ -230,12 +231,32 @@ public class HighlightPhase implements FetchSubPhase {
     }
 
     private boolean hasBatchHighlighter(SearchHighlightContext highlightContext) {
+        logger.info("Checking for batch highlighters in {} fields", highlightContext.fields().size());
+        logger.info("Available highlighters in map: {}", highlighters.keySet());
+        
         for (SearchHighlightContext.Field field : highlightContext.fields()) {
-            Highlighter highlighter = getHighlighter(field);
-            if (highlighter instanceof BatchHighlighter && ((BatchHighlighter) highlighter).supportsBatchHighlighting()) {
+            String highlighterType = field.fieldOptions().highlighterType();
+            logger.info("Field {} has highlighter type: {}", field.field(), highlighterType);
+            
+            // Special handling for semantic highlighter
+            if ("semantic".equals(highlighterType)) {
+                logger.info("Semantic highlighter requested - assuming batch support");
                 return true;
             }
+            
+            try {
+                Highlighter highlighter = getHighlighter(field);
+                logger.info("Highlighter class: {}, is BatchHighlighter: {}", 
+                    highlighter.getClass().getName(), highlighter instanceof BatchHighlighter);
+                if (highlighter instanceof BatchHighlighter && ((BatchHighlighter) highlighter).supportsBatchHighlighting()) {
+                    logger.info("Found batch highlighter for field {}", field.field());
+                    return true;
+                }
+            } catch (IllegalArgumentException e) {
+                logger.warn("Highlighter {} not found in map, error: {}", highlighterType, e.getMessage());
+            }
         }
+        logger.info("No batch highlighters found");
         return false;
     }
 
@@ -327,6 +348,10 @@ public class HighlightPhase implements FetchSubPhase {
                         Map<String, HighlightField> hitHighlights = batchContext.hitContext.hit().getHighlightFields();
                         if (hitHighlights == null) {
                             hitHighlights = new HashMap<>();
+                            batchContext.hitContext.hit().highlightFields(hitHighlights);
+                        } else if (!(hitHighlights instanceof HashMap)) {
+                            // Create a new mutable map if the existing one is immutable
+                            hitHighlights = new HashMap<>(hitHighlights);
                             batchContext.hitContext.hit().highlightFields(hitHighlights);
                         }
                         hitHighlights.put(batchContext.fieldContext.fieldName, 
