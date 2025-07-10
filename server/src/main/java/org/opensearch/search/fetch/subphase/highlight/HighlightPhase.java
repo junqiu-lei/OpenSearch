@@ -32,6 +32,8 @@
 
 package org.opensearch.search.fetch.subphase.highlight;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.search.Query;
 import org.opensearch.common.regex.Regex;
@@ -62,6 +64,7 @@ import java.util.stream.Collectors;
  * @opensearch.internal
  */
 public class HighlightPhase implements FetchSubPhase {
+    private static final Logger logger = LogManager.getLogger(HighlightPhase.class);
 
     private final Map<String, Highlighter> highlighters;
 
@@ -89,7 +92,10 @@ public class HighlightPhase implements FetchSubPhase {
 
         // Check if any highlighter supports batch processing
         if (hasBatchHighlighter(highlightContext)) {
+            logger.info("Batch highlighting enabled - using BatchHighlightProcessor");
             return new BatchHighlightProcessor(contextBuilders);
+        } else {
+            logger.info("No batch highlighters found - using standard processing");
         }
 
         return new FetchSubPhaseProcessor() {
@@ -254,6 +260,8 @@ public class HighlightPhase implements FetchSubPhase {
 
         @Override
         public void processBatch(List<HitContext> hitContexts) throws IOException {
+            logger.info("BatchHighlightProcessor.processBatch() called with {} documents", hitContexts.size());
+            
             // Group all contexts by highlighter across all documents
             Map<Highlighter, List<BatchHighlightContext>> batchContextsByHighlighter = new HashMap<>();
             
@@ -297,9 +305,12 @@ public class HighlightPhase implements FetchSubPhase {
             }
             
             // Now process all batch highlighters
+            logger.info("Processing {} batch highlighters", batchContextsByHighlighter.size());
             for (Map.Entry<Highlighter, List<BatchHighlightContext>> entry : batchContextsByHighlighter.entrySet()) {
                 BatchHighlighter batchHighlighter = (BatchHighlighter) entry.getKey();
                 List<BatchHighlightContext> batchContexts = entry.getValue();
+                logger.info("Batch highlighting {} contexts with highlighter {}", 
+                    batchContexts.size(), batchHighlighter.getClass().getSimpleName());
                 
                 // Extract field contexts for batch processing
                 List<FieldHighlightContext> fieldContexts = batchContexts.stream()

@@ -213,10 +213,15 @@ public class FetchPhase {
         }
         
         // Process batch processors after all hits have been collected
+        if (!batchProcessors.isEmpty()) {
+            LOGGER.debug("Processing {} batch processors", batchProcessors.size());
+        }
         for (Map.Entry<BatchFetchSubPhaseProcessor, List<HitContext>> entry : batchProcessors.entrySet()) {
             BatchFetchSubPhaseProcessor processor = entry.getKey();
             List<HitContext> hitContexts = entry.getValue();
             if (!hitContexts.isEmpty()) {
+                LOGGER.debug("Calling processBatch on {} with {} hits", 
+                    processor.getClass().getSimpleName(), hitContexts.size());
                 try {
                     processor.processBatch(hitContexts);
                 } catch (Exception e) {
