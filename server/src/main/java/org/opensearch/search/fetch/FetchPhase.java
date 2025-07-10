@@ -134,6 +134,23 @@ public class FetchPhase {
 
         List<FetchSubPhaseProcessor> processors = getProcessors(context.shardTarget(), fetchContext);
 
+        // Separate batch processors from normal processors
+        List<FetchSubPhaseProcessor> normalProcessors = new ArrayList<>();
+        Map<BatchFetchSubPhaseProcessor, List<HitContext>> batchProcessors = new HashMap<>();
+        
+        for (FetchSubPhaseProcessor processor : processors) {
+            if (processor instanceof BatchFetchSubPhaseProcessor) {
+                BatchFetchSubPhaseProcessor batchProcessor = (BatchFetchSubPhaseProcessor) processor;
+                if (batchProcessor.requiresBatchProcessing()) {
+                    batchProcessors.put(batchProcessor, new ArrayList<>());
+                } else {
+                    normalProcessors.add(processor);
+                }
+            } else {
+                normalProcessors.add(processor);
+            }
+        }
+
         int currentReaderIndex = -1;
         LeafReaderContext currentReaderContext = null;
         CheckedBiConsumer<Integer, FieldsVisitor, IOException> fieldReader = null;
@@ -160,7 +177,12 @@ public class FetchPhase {
                     } else {
                         fieldReader = currentReaderContext.reader().storedFields()::document;
                     }
-                    for (FetchSubPhaseProcessor processor : processors) {
+                    // Set next reader for normal processors
+                    for (FetchSubPhaseProcessor processor : normalProcessors) {
+                        processor.setNextReader(currentReaderContext);
+                    }
+                    // Set next reader for batch processors
+                    for (BatchFetchSubPhaseProcessor processor : batchProcessors.keySet()) {
                         processor.setNextReader(currentReaderContext);
                     }
                 }
@@ -174,14 +196,39 @@ public class FetchPhase {
                     currentReaderContext,
                     fieldReader
                 );
-                for (FetchSubPhaseProcessor processor : processors) {
+                // Process with normal processors immediately
+                for (FetchSubPhaseProcessor processor : normalProcessors) {
                     processor.process(hit);
                 }
+                
+                // Collect hits for batch processors
+                for (BatchFetchSubPhaseProcessor processor : batchProcessors.keySet()) {
+                    batchProcessors.get(processor).add(hit);
+                }
+                
                 hits[docs[index].index] = hit.hit();
             } catch (Exception e) {
                 throw new FetchPhaseExecutionException(context.shardTarget(), "Error running fetch phase for doc [" + docId + "]", e);
             }
         }
+        
+        // Process batch processors after all hits have been collected
+        for (Map.Entry<BatchFetchSubPhaseProcessor, List<HitContext>> entry : batchProcessors.entrySet()) {
+            BatchFetchSubPhaseProcessor processor = entry.getKey();
+            List<HitContext> hitContexts = entry.getValue();
+            if (!hitContexts.isEmpty()) {
+                try {
+                    processor.processBatch(hitContexts);
+                } catch (Exception e) {
+                    throw new FetchPhaseExecutionException(
+                        context.shardTarget(),
+                        "Error running batch fetch sub-phase [" + processor.getClass().getSimpleName() + "]",
+                        e
+                    );
+                }
+            }
+        }
+        
         if (context.isCancelled()) {
             throw new TaskCancelledException("cancelled task with reason: " + context.getTask().getReasonCancelled());
         }
